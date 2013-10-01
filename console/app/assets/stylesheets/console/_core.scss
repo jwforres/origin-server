@@ -115,7 +115,7 @@ input[type="radio"], input[type="checkbox"],input[type="image"] {
     font-size: 13px;
     font-weight: 300;
     > strong {
-      font-weight: 500;
+      font-weight: 600;
     }
   }
   p:first-child {
@@ -261,7 +261,6 @@ figure {
     display:table-cell;
     vertical-align:middle;
     margin: 0;
-    text-transform: uppercase;
   }
   .header-btn {
     vertical-align:middle;
@@ -314,16 +313,12 @@ aside .header-bar {
 }
 
 .sidebar {
-  border-bottom: 1px dotted #ccc;
   margin-bottom: $baseLineHeight; 	
 }
 
 #app-list {
  .application-suggestions span[data-icon] {
-  color: #aaa;
- }
- .row .span4 {
-  margin-top: 9px; 
+  color: #bbb;
  }
 }
 
@@ -455,22 +450,6 @@ a.cap-link:hover {
   color: #bebebe;
 }
 
-
-.btn-console-header {
-  height: 36px;
-  padding: 2px;
-  position: relative;
-  width: 33px;
-  border: 1px solid transparent;
-  opacity: .75;
-  &:hover, &.highlight {
-    opacity: 1;
-  }
-  &:active {
-    border-color: #B1E5F2;
-  }
-}
-
 #secondary {
   h5 {
     margin: 0 0 3px 0;
@@ -496,6 +475,7 @@ a.cap-link:hover {
     float: none;
     display: block;
     margin-left: 0;
+    margin-bottom: 20px;
     }
   .row {
     > strong {

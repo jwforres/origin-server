@@ -2,15 +2,17 @@
 // ----------------------------------
 
 .popover-inner {
+  font-weight: 300;
   padding: 0;
   width: 220px;
   overflow: hidden;
   background: $popoverColor;
   @include border-radius(0);
-  @include box-shadow(0 0 10px rgba(75, 75, 75, 0.5));
+  @include box-shadow(0 1px 7px rgba(0,0,0,.2));
 }
 .popover-title {
   border-bottom: 0;
+  font-size: $h5FontSize;
   padding: 14px 15px 0;
   margin-bottom: 0;
   line-height: 1;
@@ -18,14 +20,17 @@
   @include border-radius(0);
 }
 .popover-content {
-  padding: 14px 14px 5px;
   background-color: $popoverColor;
   @include border-radius(0);
   @include background-clip(padding-box);
+  padding: 14px 14px 5px;
   p, ul, ol {
+    font-size: $tinyFontSize;
     line-height: $baseLineHeight;
-    //margin-bottom: 0;
     margin-bottom: $baseLineHeight / 1.5;
+    strong {
+      font-weight: 500;
+    }
   }
 
   form {
