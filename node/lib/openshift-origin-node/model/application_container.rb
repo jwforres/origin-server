@@ -19,11 +19,14 @@ require 'openshift-origin-node/model/frontend_proxy'
 require 'openshift-origin-node/model/frontend_httpd'
 require 'openshift-origin-node/model/v2_cart_model'
 require 'openshift-origin-node/model/node'
+require 'openshift-origin-node/model/gear_registry'
+require 'openshift-origin-node/model/deployment_metadata'
 require 'openshift-origin-common/models/manifest'
 require 'openshift-origin-node/model/application_container_ext/environment'
 require 'openshift-origin-node/model/application_container_ext/setup'
 require 'openshift-origin-node/model/application_container_ext/snapshots'
 require 'openshift-origin-node/model/application_container_ext/cartridge_actions'
+require 'openshift-origin-node/model/application_container_ext/deployments'
 require 'openshift-origin-node/utils/shell_exec'
 require 'openshift-origin-node/utils/application_state'
 require 'openshift-origin-node/utils/environ'
@@ -39,6 +42,7 @@ require 'json'
 require 'rest-client'
 require 'openshift-origin-node/utils/managed_files'
 require 'timeout'
+require 'parallel'
 
 module OpenShift
   module Runtime
@@ -60,6 +64,7 @@ module OpenShift
       include ApplicationContainerExt::Setup
       include ApplicationContainerExt::Snapshots
       include ApplicationContainerExt::CartridgeActions
+      include ApplicationContainerExt::Deployments
 
       GEAR_TO_GEAR_SSH = "/usr/bin/ssh -q -o 'BatchMode=yes' -o 'StrictHostKeyChecking=no' -i $OPENSHIFT_APP_SSH_KEY "
       DEFAULT_SKEL_DIR = PathUtils.join(OpenShift::Config::CONF_DIR,"skel")
@@ -93,15 +98,19 @@ module OpenShift
         @namespace        = namespace
         @quota_blocks     = quota_blocks
         @quota_files      = quota_files
-        @uid              = user_uid
-        @gid              = user_uid
         @base_dir         = @config.get("GEAR_BASE_DIR")
         @skel_dir         = @config.get("GEAR_SKEL_DIR") || DEFAULT_SKEL_DIR
         @supplementary_groups = @config.get("GEAR_SUPPLEMENTARY_GROUPS")
         @hourglass        = hourglass || ::OpenShift::Runtime::Utils::Hourglass.new(3600)
 
         begin
-          user_info         = Etc.getpwnam(@uuid)
+          user_info = user_uid
+          [:uid, :gid, :gecos, :dir].each do |meth|
+            if not user_info.respond_to?(meth)
+              user_info = Etc.getpwnam(@uuid)
+              break
+            end
+          end
           @uid              = user_info.uid
           @gid              = user_info.gid
           @gecos            = user_info.gecos
@@ -398,7 +407,19 @@ module OpenShift
       # Sets the application state to +STOPPED+ and stops the gear. Gear stop implementation
       # is model specific, but +options+ is provided to the implementation.
       def stop_gear(options={})
-        buffer = @cartridge_model.stop_gear(options)
+        buffer = ''
+        if proxy_cartridge = @cartridge_model.web_proxy
+          unless options[:hot_deploy] == true
+            result = update_proxy_status(cartridge: proxy_cartridge,
+                                         action: :disable,
+                                         gear_uuid: self.uuid,
+                                         persist: false)
+            result[:proxy_results].each do |proxy_gear_uuid, result|
+              buffer << result[:messages].join("\n")
+            end
+          end
+        end
+        buffer << @cartridge_model.stop_gear(options)
         unless buffer.empty?
           buffer.chomp!
           buffer << "\n"
@@ -453,32 +474,21 @@ module OpenShift
         app_name = gear_env['OPENSHIFT_APP_NAME']
         url = "https://#{broker_addr}/broker/rest/domains/#{domain}/applications/#{app_name}/gear_groups.json"
 
-        params = {
-          'broker_auth_key' => File.read(PathUtils.join(@config.get('GEAR_BASE_DIR'), uuid, '.auth', 'token')).chomp,
-          'broker_auth_iv' => File.read(PathUtils.join(@config.get('GEAR_BASE_DIR'), uuid, '.auth', 'iv')).chomp
-        }
+        params = broker_auth_params
 
         request = RestClient::Request.new(:method => :get,
                                           :url => url,
-                                          :timeout => 120,
+                                          :timeout => 30,
                                           :headers => { :accept => 'application/json;version=1.0', :user_agent => 'OpenShift' },
                                           :payload => params)
 
-        begin
-          response = request.execute()
+        response = request.execute
 
-          if 300 <= response.code
-            raise response
-          end
-        rescue
-          raise
+        if 300 <= response.code
+          raise response
         end
 
-        begin
-          gear_groups = JSON.parse(response)
-        rescue
-          raise
-        end
+        gear_groups = JSON.parse(response)
 
         gear_groups
       end
@@ -499,6 +509,36 @@ module OpenShift
         end
 
         secondary_groups
+      end
+
+      ##
+      # Send the deployments to the broker
+      #
+      def report_deployments(gear_env)
+        broker_addr = @config.get('BROKER_HOST')
+        domain = gear_env['OPENSHIFT_NAMESPACE']
+        app_name = gear_env['OPENSHIFT_APP_NAME']
+        app_uuid = gear_env['OPENSHIFT_APP_UUID']
+        url = "https://#{broker_addr}/broker/rest/domain/#{domain}/application/#{app_name}/deployments"
+
+        params = broker_auth_params
+        if params
+          deployments = calculate_deployments
+          params['deployments[]'] = deployments
+          params[:application_id] = app_uuid
+
+          request = RestClient::Request.new(:method => :post,
+                                            :url => url,
+                                            :timeout => 30,
+                                            :headers => { :accept => 'application/json;version=1.6', :user_agent => 'OpenShift' },
+                                            :payload => params)
+
+          response = request.execute
+
+          if 300 <= response.code
+            raise response
+          end
+        end
       end
 
       def stopped_status_attr
@@ -581,7 +621,8 @@ module OpenShift
           end
 
           pwents.each do |pwent|
-            env = ::OpenShift::Runtime::Utils::Environ.for_gear(pwent.dir)
+            # The path is a performance hack to load only the variables we need
+            env = ::OpenShift::Runtime::Utils::Environ.load(File.join(pwent.dir, '.env', 'OPENSHIFT_{APP,GEAR}_{UUID,NAME,DNS}*'))
             if env['OPENSHIFT_GEAR_DNS'] == nil
               namespace = nil
             else
@@ -589,7 +630,7 @@ module OpenShift
             end
 
             begin
-              a=ApplicationContainer.new(env["OPENSHIFT_APP_UUID"], pwent.name, pwent.uid, env["OPENSHIFT_APP_NAME"],
+              a=ApplicationContainer.new(env["OPENSHIFT_APP_UUID"], pwent.name, pwent, env["OPENSHIFT_APP_NAME"],
                                          env["OPENSHIFT_GEAR_NAME"], namespace, nil, nil, hourglass)
             rescue => e
               NodeLogger.logger.error("Failed to instantiate ApplicationContainer for uid #{pwent.uid}/uuid #{env["OPENSHIFT_APP_UUID"]}: #{e}")
@@ -667,6 +708,38 @@ module OpenShift
 
       def set_rw_permission(paths)
         @container_plugin.set_rw_permission(paths)
+      end
+
+      def address_bound?(ip, port, hourglass)
+        @container_plugin.address_bound?(ip, port, hourglass)
+      end
+
+      def addresses_bound?(addresses, hourglass)
+        @container_plugin.addresses_bound?(addresses, hourglass)
+      end
+
+      def gear_registry
+        if @gear_registry.nil? and @cartridge_model.web_proxy
+          @gear_registry = ::OpenShift::Runtime::GearRegistry.new(self)
+        end
+
+        @gear_registry
+      end
+
+      protected
+
+      def broker_auth_params
+        auth_token = PathUtils.join(@config.get('GEAR_BASE_DIR'), uuid, '.auth', 'token')
+        auth_iv = PathUtils.join(@config.get('GEAR_BASE_DIR'), uuid, '.auth', 'iv')
+        if File.exist?(auth_token) && File.exist?(auth_iv)
+          params = {
+            'broker_auth_key' => File.read(auth_token).chomp,
+            'broker_auth_iv' => File.read(auth_iv).chomp
+          }
+        else
+          params = nil
+        end
+        params
       end
     end
   end

@@ -83,6 +83,10 @@ action "cartridge_do", :description => "run a cartridge action" do
                               user-var-remove
                               user-var-list
                               unsubscribe
+                              update-cluster
+                              update-configuration
+                              deploy
+                              activate
                               ),
         :optional       => false,
         :maxlength      => 64
@@ -104,6 +108,10 @@ action "cartridge_do", :description => "run a cartridge action" do
     output :exitcode,
            :description => "Exit code",
            :display_as => "Exit Code"
+
+    output :addtl_params,
+           :description => "Additional Params",
+           :display_as => "Additional Params"
 end
 
 action "get_facts", :description => "get a specific list of facts" do
@@ -185,7 +193,7 @@ action "set_district", :description => "Set the District of a Node" do
         :validation     => '^[a-zA-Z0-9]+$',
         :optional       => false,
         :maxlength      => 32
-        
+
     input :active,
         :prompt         => "District active boolean",
         :description    => "District active boolean",
@@ -468,16 +476,7 @@ action "upgrade", :description => "upgrade a gear" do
         :validation     => '^[a-zA-Z0-9]+$',
         :optional       => false,
         :maxlength      => 32
-                
-    input :secret_token,
-        :prompt         => "Application secret token",
-        :description    => "Application secret token",
-        :type           => :string,
-        :validation     => '^[\w\-]+$',
-        :optional       => false,
-        :minlength      => 128,
-        :maxlength      => 128
-                
+
     input :namespace,
         :prompt         => "Namespace",
         :description    => "Namespace",
@@ -500,6 +499,22 @@ action "upgrade", :description => "upgrade a gear" do
         :type           => :list,
         :optional       => false,
         :list           => ["true", "false"]
+
+    input :auth_token,
+        :prompt         => "Broker auth token",
+        :description    => "Broker auth token",
+        :type           => :string,
+        :validation     => '^.+$',
+        :optional       => true,
+        :maxlength      => 128
+
+    input :auth_iv,
+        :prompt         => "Broker auth iv",
+        :description    => "Broker auth iv",
+        :type           => :string,
+        :validation     => '^.+$',
+        :optional       => true,
+        :maxlength      => 512
 
     output  :time,
             :description => "The time as a message",

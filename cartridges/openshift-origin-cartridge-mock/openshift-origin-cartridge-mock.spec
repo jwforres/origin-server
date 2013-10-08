@@ -2,7 +2,7 @@
 
 Summary:       Mock cartridge for V2 Cartridge SDK
 Name:          openshift-origin-cartridge-mock
-Version:       1.15.3
+Version: 1.16.0
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -31,13 +31,15 @@ test platform functionality. (Cartridge Format V2)
 %files
 %dir %{cartridgedir}
 %attr(0755,-,-) %{cartridgedir}/bin/
-%attr(0755,-,-) %{cartridgedir}/hooks/
 %{cartridgedir}
 %doc %{cartridgedir}/README.md
 %doc %{cartridgedir}/COPYRIGHT
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Tue Oct 01 2013 Adam Miller <admiller@redhat.com> 1.15.4-1
+- Bug 1013334 - Was exposing the wrong port. (rmillner@redhat.com)
+
 * Thu Sep 26 2013 Troy Dawson <tdawson@redhat.com> 1.15.3-1
 - Merge pull request #3707 from rajatchopra/master
   (dmcphers+openshiftbot@redhat.com)

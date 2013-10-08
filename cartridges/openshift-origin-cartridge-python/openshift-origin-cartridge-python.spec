@@ -1,7 +1,7 @@
 %global cartridgedir %{_libexecdir}/openshift/cartridges/python
 
 Name:          openshift-origin-cartridge-python
-Version:       1.15.2
+Version: 1.16.0
 Release:       1%{?dist}
 Summary:       Python cartridge
 Group:         Development/Languages
@@ -108,13 +108,16 @@ Python cartridge for OpenShift. (Cartridge Format V2)
 %endif
 %attr(0755,-,-) %{cartridgedir}/usr/versions/2.7/bin/*
 %attr(0755,-,-) %{cartridgedir}/usr/versions/3.3/bin/*
-%attr(0755,-,-) %{cartridgedir}/hooks
 %{cartridgedir}
 %doc %{cartridgedir}/README.md
 %doc %{cartridgedir}/COPYRIGHT
 %doc %{cartridgedir}/LICENSE
 
 %changelog
+* Thu Oct 03 2013 Adam Miller <admiller@redhat.com> 1.15.3-1
+- Bug 1014339 - Support for setting $OPENSHIFT_PYPI_MIRROR_URL
+  (bleanhar@redhat.com)
+
 * Thu Sep 26 2013 Troy Dawson <tdawson@redhat.com> 1.15.2-1
 - Bug 1007654 - Add community category (jhonce@redhat.com)
 

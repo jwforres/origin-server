@@ -6,7 +6,7 @@
 
 Summary:       Utility scripts for the OpenShift Origin node
 Name:          openshift-origin-node-util
-Version: 1.15.4
+Version: 1.16.0
 Release:       1%{?dist}
 Group:         Network/Daemons
 License:       ASL 2.0
@@ -40,10 +40,14 @@ mkdir -p %{buildroot}%{_bindir}
 cp -p bin/oo-* %{buildroot}%{_sbindir}/
 rm %{buildroot}%{_sbindir}/oo-snapshot
 rm %{buildroot}%{_sbindir}/oo-restore
+rm %{buildroot}%{_sbindir}/oo-binary-deploy
+rm %{buildroot}%{_sbindir}/oo-gear-registry
 rm %{buildroot}%{_sbindir}/oo-config-eval
 cp -p bin/rhc-* %{buildroot}%{_bindir}/
 cp -p bin/oo-snapshot %{buildroot}%{_bindir}/
 cp -p bin/oo-restore %{buildroot}%{_bindir}/
+cp -p bin/oo-binary-deploy %{buildroot}%{_bindir}/
+cp -p bin/oo-gear-registry %{buildroot}%{_bindir}/
 cp -p bin/oo-config-eval %{buildroot}%{_bindir}/
 cp -p bin/unidle_gear.sh %{buildroot}%{_bindir}/
 
@@ -111,8 +115,10 @@ cp -p init.d/openshift-gears %{buildroot}%{_initddir}/
 %attr(0755,-,-) %{_bindir}/rhc-list-ports
 %attr(0755,-,-) %{_bindir}/oo-snapshot
 %attr(0755,-,-) %{_bindir}/oo-restore
+%attr(0755,-,-) %{_bindir}/oo-binary-deploy
 %attr(0755,-,-) %{_bindir}/unidle_gear.sh
 %attr(0755,-,-) %{_bindir}/oo-config-eval
+%attr(0755,-,-) %{_bindir}/oo-gear-registry
 
 %{_mandir}/man8/oo-accept-node.8.gz
 %{_mandir}/man8/oo-admin-ctl-gears.8.gz
@@ -143,6 +149,14 @@ cp -p init.d/openshift-gears %{buildroot}%{_initddir}/
 %endif
 
 %changelog
+* Fri Oct 04 2013 Adam Miller <admiller@redhat.com> 1.15.5-1
+- Merge pull request #3758 from mfojtik/bugzilla/998337
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1013653 - Fix oo-su command so it is not duplicating the getpwnam call
+  (mfojtik@redhat.com)
+- Bug 998337 - Fixed oo-admin-cartridge man page indentation
+  (mfojtik@redhat.com)
+
 * Fri Sep 27 2013 Troy Dawson <tdawson@redhat.com> 1.15.4-1
 - node-util: RHBZ#1012830 do not overrite the {min,max}_uid value if not
   defined in facter (mmahut@redhat.com)

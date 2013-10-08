@@ -68,14 +68,15 @@ module OpenShift
         raise "#{gear_extension_path} exists and failed to load" unless @@gear_extension_present
       end
 
-      attr_reader :uuid, :application_uuid, :secret_token, :namespace, :version, :hostname, 
+      attr_reader :uuid, :application_uuid, :auth_token, :auth_iv, :namespace, :version, :hostname, 
                   :ignore_cartridge_version, :gear_home, :gear_env, :progress, :container, 
                   :gear_extension, :config, :hourglass
 
-      def initialize(uuid, application_uuid, secret_token, namespace, version, hostname, ignore_cartridge_version, hourglass = nil)
+      def initialize(uuid, application_uuid, auth_token, auth_iv, namespace, version, hostname, ignore_cartridge_version, hourglass = nil)
         @uuid = uuid
         @application_uuid = application_uuid
-        @secret_token = secret_token
+        @auth_token = auth_token
+        @auth_iv = auth_iv
         @namespace = namespace
         @version = version
         @hostname = hostname
@@ -336,6 +337,25 @@ module OpenShift
       end
 
       #
+      # If the gear extension defines an upgrade method for the gear, run it.
+      #
+      def pre_cartridge_upgrade(itinerary)
+        if !gear_extension.nil? && gear_extension.respond_to(:upgrade_gear)
+          progress.step 'pre_cartridge_upgrade' do
+            gear_extension.pre_cartridge_upgrade(progress, itinerary)
+          end
+        end
+      end
+
+      def post_cartridge_upgrade(itinerary)
+        if !gear_extension.nil? && gear_extension.respond_to(:upgrade_gear)
+          progress.step 'post_cartridge_upgrade' do
+            gear_extension.post_cartridge_upgrade(progress, itinerary)
+          end
+        end
+      end
+
+      #
       # Gear-level upgrade script:
       #
       # 1. For each cartridge in the upgrade itinerary:
@@ -357,6 +377,8 @@ module OpenShift
           if itinerary.has_incompatible_upgrade?
             stop_gear
           end
+
+          pre_cartridge_upgrade(itinerary)
 
           OpenShift::Runtime::Utils::Cgroups.new(uuid).boost do
           Dir.chdir(container.container_dir) do
@@ -399,6 +421,8 @@ module OpenShift
             end
           end
           end
+
+          post_cartridge_upgrade(itinerary)
 
           if itinerary.has_incompatible_upgrade?
             restart_start_time = timestamp

@@ -49,7 +49,7 @@ module Ability
   end
 
   #
-  # Does the active have a specific permission on a given resource.  Bypasses scope checking, so only use
+  # Does the actor have a specific permission on a given resource.  Bypasses scope checking, so only use
   # when scopes are not relevant.
   #
   # NOTE: When adding new permissions, be sure to add those to the appropriate scopes as well.  By default
@@ -57,6 +57,7 @@ module Ability
   #       automatically inherited.
   #
   def self.has_permission?(actor_or_id, permission, type, role, resource, *resources)
+
     if Application <= type
       case permission
 
@@ -74,13 +75,17 @@ module Ability
            :ssh_to_gears,
            :destroy_alias,
            :view_environment_variables,
-           :change_environment_variables
+           :change_environment_variables,
+           :update_application,
+           :create_deployment
         Role.in?(:edit, role)
 
       when :change_members,
            :leave
         false
 
+      when :update_deployments
+        true
       end
 
     elsif Domain <= type
@@ -89,16 +94,13 @@ module Ability
            :create_builder_application
         Role.in?(:edit, role)
 
-      when :change_namespace
-        Role.in?(:admin, role)
-
       when :change_members
         Role.in?(:admin, role)
 
       when :leave
         Role.in?(:view, role)
 
-      when :change_gear_sizes, :destroy
+      when :change_namespace, :change_gear_sizes, :destroy
         resource.owned_by?(actor_or_id)
 
       end

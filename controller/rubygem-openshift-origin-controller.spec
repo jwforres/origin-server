@@ -9,7 +9,7 @@
 
 Summary:       Cloud Development Controller
 Name:          rubygem-%{gem_name}
-Version: 1.15.6
+Version: 1.16.0
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -84,6 +84,57 @@ mkdir -p %{buildroot}/etc/openshift/
 %{gem_dir}/doc/%{gem_name}-%{version}
 
 %changelog
+* Fri Oct 04 2013 Adam Miller <admiller@redhat.com> 1.15.10-1
+- Merge pull request #3768 from abhgupta/abhgupta-dev
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3739 from smarterclayton/move_new_domain_fields_to_api_13
+  (dmcphers+openshiftbot@redhat.com)
+- Fix for bug 1014837 (abhgupta@redhat.com)
+- Isolate new domain attributes to API 1.3 and above (ccoleman@redhat.com)
+
+* Thu Oct 03 2013 Adam Miller <admiller@redhat.com> 1.15.9-1
+- Merge pull request #3298 from Miciah/bug-993440-restapplication-initialize-
+  check-if-cart-is-nil (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3757 from lnader/master
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3759 from kraman/test_case_fixes
+  (dmcphers+openshiftbot@redhat.com)
+- fix cart order calculations (rchopra@redhat.com)
+- Add and use find_cartridge_or_raise_exception (miciah.masters@gmail.com)
+- Bug 980306 (lnader@redhat.com)
+- Remove gear removed checks which were added before just for extra safety.
+  (rpenta@redhat.com)
+- Have CloudUser create a new CapabilityProxy every time to fix
+  application_test.rb#test_scaling_and_storage_events_on_application on F19.
+  (kraman@gmail.com)
+- Fix PHP cartridge to wait upto 5 sec for Apache to start and create a pid
+  file before returning. This is needed because Apache 2.4 on F19 does a
+  reverse DNS lookup on the server hostname and causes a race condition in
+  runtime-cartridge-php.feature testcase. (kraman@gmail.com)
+
+* Wed Oct 02 2013 Adam Miller <admiller@redhat.com> 1.15.8-1
+- Merge pull request #3756 from pravisankar/dev/ravi/rename-node-removed
+  (dmcphers+openshiftbot@redhat.com)
+- Renamed field 'node_removed' to 'removed' in gear model (rpenta@redhat.com)
+- Merge pull request #3742 from pravisankar/dev/ravi/misc-bugfixes
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3748 from rajatchopra/master
+  (dmcphers+openshiftbot@redhat.com)
+- fix bz1012709 - remove gear's ssh keys. add debugging to admin-clear-pending-
+  ops (rchopra@redhat.com)
+- Bug 1012970 - Fix pending op group: ReplaceAllSshKeysOpGroup.
+  (rpenta@redhat.com)
+
+* Tue Oct 01 2013 Adam Miller <admiller@redhat.com> 1.15.7-1
+- Merge pull request #3746 from
+  jwforres/bug_998396_no_api_response_member_delete
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3744 from detiber/bz1013788
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 998396 - member remove api doesnt return a message (jforrest@redhat.com)
+- Bug 1013788 - Remove first_uid from district model (jdetiber@redhat.com)
+- Bug 1013429 (asari.ruby@gmail.com)
+
 * Mon Sep 30 2013 Troy Dawson <tdawson@redhat.com> 1.15.6-1
 - oo-admin-repair changes (rpenta@redhat.com)
 - Remove skip_node_ops flag from user/domain/app/district models.

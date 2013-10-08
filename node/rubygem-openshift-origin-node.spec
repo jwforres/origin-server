@@ -12,7 +12,7 @@
 
 Summary:       Cloud Development Node
 Name:          rubygem-%{gem_name}
-Version: 1.15.5
+Version: 1.16.0
 Release:       1%{?dist}
 Group:         Development/Languages
 License:       ASL 2.0
@@ -27,6 +27,7 @@ Requires:      %{?scl:%scl_prefix}rubygem(commander)
 Requires:      %{?scl:%scl_prefix}rubygem(json)
 Requires:      %{?scl:%scl_prefix}rubygem(mocha)
 Requires:      %{?scl:%scl_prefix}rubygem(open4)
+Requires:      %{?scl:%scl_prefix}rubygem(parallel)
 %if 0%{?rhel} <= 6
 # non-scl open4 required for ruby 1.8 cartridge
 # Also see related bugs 924556 and 912215
@@ -144,6 +145,7 @@ cp %{buildroot}%{gem_instdir}/misc/init/openshift-iptables-port-proxy %{buildroo
 %else
 mkdir -p %{buildroot}/etc/systemd/system
 mv %{buildroot}%{gem_instdir}/misc/services/openshift-tc.service %{buildroot}/etc/systemd/system/openshift-tc.service
+mv %{buildroot}%{gem_instdir}/misc/services/openshift-iptables-port-proxy.service %{buildroot}/etc/systemd/system/openshift-iptables-port-proxy.service
 %endif
 
 # Don't install or package what's left in the misc directory
@@ -181,6 +183,7 @@ fi
 %if 0%{?fedora} >= 16 || 0%{?rhel} >= 7
   systemctl restart  crond.service || :
   systemctl enable openshift-tc.service || :
+  systemctl enable openshift-iptables-port-proxy || :
 %else
   /sbin/chkconfig --add openshift-tc || :
   /sbin/chkconfig --add openshift-iptables-port-proxy || :
@@ -233,6 +236,7 @@ fi
 %attr(0755,-,-) /etc/rc.d/init.d/openshift-iptables-port-proxy
 %else
 %attr(0750,-,-) /etc/systemd/system/openshift-tc.service
+%attr(0750,-,-) /etc/systemd/system/openshift-iptables-port-proxy.service
 %endif
 
 %if 0%{?fedora} >= 15
@@ -258,6 +262,46 @@ fi
 %attr(0755,-,-) /etc/cron.daily/openshift-origin-stale-lockfiles
 
 %changelog
+* Fri Oct 04 2013 Adam Miller <admiller@redhat.com> 1.15.9-1
+- Bug 1014768 - Performance improvements for node_utilization: Allow self.all
+  to pass the pwnam structure rather than having to call getpwnam each time.
+  Lazy load the MCS labels and get rid of an extraneous call to Config.
+  (rmillner@redhat.com)
+- Merge pull request #3766 from mfojtik/bugzilla/1013653
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1013653 - Fix oo-su command so it is not duplicating the getpwnam call
+  (mfojtik@redhat.com)
+
+* Thu Oct 03 2013 Adam Miller <admiller@redhat.com> 1.15.8-1
+- Merge pull request #3763 from rmillner/speed_up_env
+  (dmcphers+openshiftbot@redhat.com)
+- Merge pull request #3759 from kraman/test_case_fixes
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1014768 - Loading the environ dominated the cost to enumerate
+  ApplicationContainers.  Narrowing down the list of files to load shaves 50%%.
+  (rmillner@redhat.com)
+- Fix shell_exec_func_test to set shell when creating test user.
+  (kraman@gmail.com)
+- Fix for application_repository_func_test.rb   - gear shell needs to be oo-
+  trap-user for Origin/OSE pam namespace rules to work (kraman@gmail.com)
+- Extract common functionality into admin script and add service file for
+  openshift-iptables-port-proxy. Fix location of lock file. (kraman@gmail.com)
+- Move addresses_bound/address_bound? into container plugin (kraman@gmail.com)
+
+* Wed Oct 02 2013 Adam Miller <admiller@redhat.com> 1.15.7-1
+- Merge pull request #3751 from jwhonce/bug/1012981
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1012981 - Parse post-configure output for client messages
+  (jhonce@redhat.com)
+
+* Tue Oct 01 2013 Adam Miller <admiller@redhat.com> 1.15.6-1
+- Merge pull request #3737 from mfojtik/bugzilla/1013653
+  (dmcphers+openshiftbot@redhat.com)
+- Bug 1013653 - Remove '.to_i' in oo-su command to avoid wrong user id
+  (mfojtik@redhat.com)
+- Bug 1012348 - Adding unixODBC dependencies to the node gem for compatibility
+  with Online (bleanhar@redhat.com)
+
 * Fri Sep 27 2013 Troy Dawson <tdawson@redhat.com> 1.15.5-1
 - Merge pull request #3720 from smarterclayton/origin_ui_72_membership
   (dmcphers+openshiftbot@redhat.com)

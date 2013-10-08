@@ -4,13 +4,15 @@ require 'pp'
 require 'json'
 require 'zlib'
 require 'base64'
+require 'etc'
 require 'openshift-origin-node'
 require 'openshift-origin-node/model/cartridge_repository'
 require 'openshift-origin-node/utils/hourglass'
 require 'openshift-origin-common/utils/path_utils'
+require 'openshift-origin-common/utils/file_needs_sync'
 require 'shellwords'
 require 'facter'
-require 'openshift-origin-common/utils/file_needs_sync'
+require 'stringio'
 
 module MCollective
   module Agent
@@ -52,7 +54,7 @@ module MCollective
             require path
             include ::Openshift::AgentExtension
             agent_startup
-          end        
+          end
         rescue Exception => e
           Log.instance.error e.message
           Log.instance.error e.backtrace.inspect
@@ -100,11 +102,12 @@ module MCollective
         output                     = ''
 
         # Do the action execution
-        exitcode, output           = execute_action(action, args)
+        exitcode, output, addtl_params = execute_action(action, args)
         report_quota(output, args['--with-container-uuid']) if args['--with-container-uuid']
 
-        reply[:exitcode] = exitcode
-        reply[:output]   = output
+        reply[:exitcode]     = exitcode
+        reply[:output]       = output
+        reply[:addtl_params] = addtl_params
 
         if exitcode == 0
           Log.instance.info("cartridge_do_action reply (#{exitcode}):\n------\n#{cleanpwd(output)}\n------)")
@@ -123,6 +126,7 @@ module MCollective
 
         exitcode = 0
         output   = ""
+        addtl_params = nil
 
         if not self.respond_to?(action_method)
           exitcode = 127
@@ -133,13 +137,13 @@ module MCollective
             OpenShift::Runtime::NodeLogger.context[:request_id]    = request_id if request_id
             OpenShift::Runtime::NodeLogger.context[:action_method] = action_method if action_method
 
-            exitcode, output = self.send(action_method.to_sym, args)
+            exitcode, output, addtl_params = self.send(action_method.to_sym, args)
           rescue => e
             report_exception e
             Log.instance.error("Unhandled action execution exception for action [#{action}]: #{e.message}")
             Log.instance.error(e.backtrace)
             exitcode = 127
-            output   = "An internal exception occured processing action #{action}: #{e.message}"
+            output   = "An internal exception occurred processing action #{action}: #{e.message}"
           ensure
             OpenShift::Runtime::NodeLogger.context.delete(:request_id)
             OpenShift::Runtime::NodeLogger.context.delete(:action_method)
@@ -147,7 +151,7 @@ module MCollective
           Log.instance.info("Finished executing action [#{action}] (#{exitcode})")
         end
 
-        return exitcode, output
+        return exitcode, output, addtl_params
       end
 
       # report approaching quota overage.
@@ -189,7 +193,7 @@ module MCollective
             action    = job[:action]
             args      = job[:args]
 
-            exitcode, output = execute_action(action, args)
+            exitcode, output, addtl_params = execute_action(action, args)
             if args['--with-container-uuid'] && ! quota_reported
               report_quota(output, args['--with-container-uuid'])
               quota_reported = true
@@ -197,6 +201,7 @@ module MCollective
 
             parallel_job[:result_exit_code] = exitcode
             parallel_job[:result_stdout]    = output
+            parallel_job[:result_addtl_params] = addtl_params
         end
 
         Log.instance.info("execute_parallel_action call - #{joblist}")
@@ -211,12 +216,12 @@ module MCollective
         Log.instance.info("upgrade_action call / action=#{request.action}, agent=#{request.agent}, data=#{request.data.pretty_inspect}")
         validate :uuid, /^[a-zA-Z0-9]+$/
         validate :app_uuid, /^[a-zA-Z0-9]+$/
-        validate :secret_token, /^[\w\-]+$/
         validate :version, /^.+$/
         validate :namespace, /^.+$/
         uuid = request[:uuid]
         application_uuid = request[:app_uuid]
-        secret_token = request[:secret_token]
+        auth_token = request[:auth_token]
+        auth_iv = request[:auth_iv]
         namespace = request[:namespace]
         version = request[:version]
         ignore_cartridge_version = request[:ignore_cartridge_version] == 'true' ? true : false
@@ -227,7 +232,7 @@ module MCollective
 
         begin
           require 'openshift-origin-node/model/upgrade'
-          upgrader = OpenShift::Runtime::Upgrader.new(uuid, application_uuid, secret_token, namespace, version, hostname, ignore_cartridge_version, OpenShift::Runtime::Utils::Hourglass.new(235))
+          upgrader = OpenShift::Runtime::Upgrader.new(uuid, application_uuid, auth_token, auth_iv, namespace, version, hostname, ignore_cartridge_version, OpenShift::Runtime::Utils::Hourglass.new(235))
         rescue Exception => e
           report_exception e
           exitcode = 1
@@ -295,7 +300,11 @@ module MCollective
         begin
           container = get_app_container_from_args(args)
           yield(container, output)
-          return 0, output
+          if args['--report-deployments'] && args['--cart-name'] && container.cartridge_model.get_cartridge(args['--cart-name']).deployable?
+            return 0, output, {:deployments => container.calculate_deployments}
+          else
+            return 0, output
+          end
         rescue OpenShift::Runtime::Utils::ShellExecutionException => e
           report_exception e
           return e.rc, "#{e.message}\n#{e.stdout}\n#{e.stderr}"
@@ -303,7 +312,7 @@ module MCollective
           report_exception e
           Log.instance.error e.message
           Log.instance.error e.backtrace.join("\n")
-          return -1, e.message
+          return 1, e.message
         end
       end
 
@@ -328,7 +337,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -344,11 +353,75 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           output << out
           output << err
           return rc, output
+        end
+      end
+
+      def oo_update_configuration(args)
+        config  = args['--with-config']
+        auto_deploy = config['auto_deploy']
+        deployment_branch = config['deployment_branch']
+        keep_deployments = config['keep_deployments']
+        deployment_type = config['deployment_type']
+
+        with_container_from_args(args) do |container|
+          container.set_auto_deploy(auto_deploy)
+          container.set_deployment_branch(deployment_branch)
+          container.set_keep_deployments(keep_deployments)
+          container.set_deployment_type(deployment_type)
+        end
+      end
+
+      def oo_deploy(args)
+        hot_deploy = args['--with-hot-deploy']
+        force_clean_build = args['--with-force-clean-build']
+        ref = args['--with-ref']
+        artifact_url = args['--with-artifact-url']
+        out = StringIO.new
+        err = StringIO.new
+        addtl_params = {}
+
+        begin
+          with_container_from_args(args) do |container|
+            container.deploy(hot_deploy: hot_deploy, force_clean_build: force_clean_build, ref: ref, artifact_url: artifact_url, out: out, err: err)
+            addtl_params[:deployments] = container.calculate_deployments
+          end
+        rescue Exception => e
+          Log.instance.info e.message
+          Log.instance.info e.backtrace
+          return 1, e.message
+        else
+          output = ''
+          output << out.string
+          output << err.string
+          return 0, output, addtl_params
+        end
+      end
+
+      def oo_activate(args)
+        deployment_id  = args['--with-deployment-id']
+        out = StringIO.new
+        err = StringIO.new
+        addtl_params = {}
+
+        begin
+          with_container_from_args(args) do |container|
+            container.activate(deployment_id: deployment_id, out: out, err: err)
+            addtl_params[:deployments] = container.calculate_deployments
+          end
+        rescue Exception => e
+          Log.instance.info e.message
+          Log.instance.info e.backtrace
+          return 1, e.message
+        else
+          output = ''
+          output << out.string
+          output << err.string
+          return 0, output, addtl_params
         end
       end
 
@@ -381,7 +454,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, ""
         end
@@ -463,7 +536,7 @@ module MCollective
         rescue Exception => e
           report_exception e
           Log.instance.info "#{e.message}\n#{e.backtrace}"
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -480,7 +553,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -510,7 +583,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -528,7 +601,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -566,7 +639,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -794,10 +867,12 @@ module MCollective
       def oo_post_configure(args)
         cart_name = args['--cart-name']
         template_git_url = args['--with-template-git-url']
+        args['--report-deployments'] = true
 
         with_container_from_args(args) do |container, output|
           output << container.post_configure(cart_name, template_git_url)
         end
+
       end
 
       def oo_deconfigure(args)
@@ -851,7 +926,7 @@ module MCollective
           report_exception e
           Log.instance.info e.message
           Log.instance.info e.backtrace
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
         end
@@ -875,9 +950,12 @@ module MCollective
 
       def oo_restart(args)
         cart_name = args['--cart-name']
+        options = {}
+        options[:all] = true if args['--all']
+        options[:parallel_concurrency_ratio] = args['--parallel_concurrency_ratio'].to_f if args['--parallel_concurrency_ratio']
 
         with_container_from_args(args) do |container, output|
-          output << container.restart(cart_name)
+          container.restart(cart_name, options)
         end
       end
 
@@ -911,9 +989,24 @@ module MCollective
         rescue Exception => e
           report_exception e
           Log.instance.info "#{e.message}\n#{e.backtrace}"
-          return -1, e.message
+          return 1, e.message
         else
           return 0, output
+        end
+      end
+
+      def oo_update_cluster(args)
+        with_container_from_args(args) do |container|
+          container.update_cluster(args['--proxy-gears'], args['--web-gears'], args['--rollback'])
+        end
+      end
+
+      def oo_update_proxy_status(args)
+        with_container_from_args(args) do |container|
+          container.update_proxy_status(action: args['--action'],
+                                        gear_uuid: args['--gear_uuid'],
+                                        cartridge: args['--cart-name'],
+                                        persist: args['--persist'])
         end
       end
 
@@ -1098,13 +1191,11 @@ module MCollective
         validate :uid, /^[0-9]+$/
         uid  = request[:uid].to_i
 
-        # FIXME: Etc.getpwuid() and Etc.getgrgid() would be much faster
-        uids = IO.readlines("/etc/passwd").map { |line| line.split(":")[2].to_i }
-        gids = IO.readlines("/etc/group").map { |line| line.split(":")[2].to_i }
-
-        if uids.include?(uid) || gids.include?(uid)
+        begin
+          Etc.getpwuid(uid)
+          Etc.getgrgid(uid)
           reply[:output] = true
-        else
+        rescue TypeError, ArgumentError
           reply[:output] = false
         end
         reply[:exitcode] = 0

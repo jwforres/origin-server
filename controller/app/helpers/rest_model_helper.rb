@@ -17,6 +17,8 @@ module RestModelHelper
   def get_rest_domain(domain)
     if requested_api_version == 1.0
       RestDomain10.new(domain, get_url, nolinks)
+    elsif requested_api_version <= 1.2
+      RestDomain12.new(domain, get_url, nolinks)
     elsif requested_api_version <= 1.5
       RestDomain15.new(domain, get_url, nolinks)
     else
@@ -114,5 +116,9 @@ module RestModelHelper
     else
       RestGearGroup.new(group_inst, gear_states, application, get_url, nolinks, include_endpoints) 
     end
+  end
+  
+  def get_rest_deployment(deployment)
+    RestDeployment.new(deployment)
   end
 end
