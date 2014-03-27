@@ -314,8 +314,8 @@ module OpenShift
       # * ResultIO
       #
       def destroy(gear, keep_uid=false, uid=nil, skip_hooks=false)
-        #TODO
-        return result_io
+        #TODO WIP, needed to complete ssh key commands
+        ResultIO.new
       end
 
       # Add an SSL certificate to a gear on the remote node and associate it with
@@ -628,6 +628,7 @@ module OpenShift
       def get_start_job(gear, component)
         #TODO
         args = build_base_gear_args gear
+        args[:method] = :put
         RemoteJob.new('openshift-origin-node', "container/#{gear.uuid}/started", args)
       end
 
@@ -649,6 +650,7 @@ module OpenShift
       def get_stop_job(gear, component)
         #TODO
         args = build_base_gear_args gear
+        args[:method] = :put
         RemoteJob.new('openshift-origin-node', "container/#{gear.uuid}/stopped", args)
       end
 
@@ -690,6 +692,7 @@ module OpenShift
 
       def get_restart_job(gear, component, all=false)
         args = build_base_gear_args gear
+        args[:method] = :post
         RemoteJob.new('openshift-origin-node', "container/#{gear.uuid}/restart", args)
       end
 
@@ -997,9 +1000,12 @@ module OpenShift
       # * uses RemoteJob
       #
       def get_add_authorized_ssh_keys_job(gear, ssh_keys)
-        #TODO
-        job = RemoteJob.new('openshift-origin-node', 'authorized-ssh-key-batch-add', args)
-        job
+        #WIP
+        args = build_base_gear_args(gear)
+        containers = [ {'Id' => gear.uuid} ]
+        args[:method] = :put        
+        args[:body] = {'Keys' => build_ssh_key_args_with_content(ssh_keys), 'Containers' => containers }
+        RemoteJob.new('openshift-origin-node', 'keys', args)
       end
 
       #
@@ -1612,8 +1618,29 @@ module OpenShift
             job = parallel_job[:job]
             #async do
               clnt = HTTPClient.new
-              #todo since we don't have the right identity right now, pass localhost instead of identity
-              res = clnt.put("#{build_base_geard_url (ENV['GEARD_HOST_PORT'] || 'localhost:8080')}#{job[:action]}#{job[:args]}")
+              # WIP job
+              geard_op = job[:args]            
+              http_method = geard_op[:method]
+              http_body = geard_op[:body]
+              geard_url = "#{build_base_geard_url (ENV['GEARD_HOST_PORT'] || 'localhost:8080')}#{job[:action]}"
+              res = case http_method
+                when :put 
+                  if http_body.empty?
+                    clnt.put(geard_url)
+                  else
+                    clnt.put(geard_url, http_body.to_json, build_geard_post_headers)
+                  end
+                when :delete 
+                  clnt.delete(geard_url)
+                when :get 
+                  clnt.get(geard_url)
+                when :post 
+                  if http_body.empty?
+                    clnt.post(geard_url)
+                  else
+                    clnt.post(geard_url, http_body.to_json, build_geard_post_headers)
+                  end
+                end
               handle[identity].each { |gear_info|
                 gear_info[:result_stdout] = "(Gear Id: #{gear_info[:gear]}) #{res.body}"
                 gear_info[:result_exit_code] = res.status_code < 400 ? 0 : res.status_code
@@ -1631,7 +1658,8 @@ module OpenShift
       end
 
       def build_ssh_key_args_with_content(ssh_keys)
-        ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name'], 'content' => k['content']} }
+        #ssh_keys.map { |k| {'key' => k['content'], 'type' => k['type'], 'comment' => k['name'], 'content' => k['content']} }
+        ssh_keys.map { |k| {'Type' => 'authorized_keys', 'Value' => "#{k['type']} #{k['content']}" } }
       end
 
       def build_ssh_key_args(ssh_keys)
@@ -1642,10 +1670,6 @@ module OpenShift
         "http://#{@hostname}/"
       end
 
-      def build_base_gear_args(gear, quota_blocks=nil, quota_files=nil, sshkey_required=false)
-        ""
-      end
-
       def build_geard_post_headers
         {"Content-Type" => "application/json"}
       end
@@ -1654,8 +1678,13 @@ module OpenShift
         "http://#{hostname}/"
       end
 
-      def self.build_base_gear_args(gear, quota_blocks=nil, quota_files=nil, sshkey_required=false)
-        ""
+      #
+      # Build base hash with arguments used to interact with geard
+      #
+      #
+      def build_base_gear_args(gear, quota_blocks=nil, quota_files=nil, sshkey_required=false)
+        app = gear.application
+        { :method => :get, :body => {} }
       end
 
       def self.build_geard_post_headers
