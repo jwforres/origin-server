@@ -73,7 +73,7 @@ module OpenShift
             if info[:user]
               user = info[:user]
             else
-              user, created = CloudUser.find_or_create_by_identity(info[:provider], info[:username])
+              user, created = CloudUser.find_or_create_by_identity(info[:provider], info[:username], :email => info[:email], :analytics => info[:analytics])
               user = impersonate(user)
             end
 
@@ -123,7 +123,7 @@ module OpenShift
           if info
             raise "Authentication service must return a username with its response" if info[:username].nil?
 
-            user, _ = CloudUser.find_or_create_by_identity(info[:provider], info[:username])
+            user, _ = CloudUser.find_or_create_by_identity(info[:provider], info[:username], :email => info[:email], :analytics => info[:analytics])
             log_action("CREDENTIAL_AUTHENTICATE", nil, true, "Authenticated via credentials", {'LOGIN' => username, 'IP' => request.remote_ip})
             user
           end

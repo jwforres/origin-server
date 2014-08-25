@@ -40,6 +40,7 @@ class CloudUser
   field :consumed_gears, type: Integer, default: 0
   field :email, type: String
   field :currency_cd, type: String, default: nil
+  field :analytics, type: Hash, default: ->{}
 
   embeds_many :ssh_keys, class_name: UserSshKey.name
   embeds_many :pending_op_groups, class_name: PendingUserOpGroup.name, cascade_callbacks: true
